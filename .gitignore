@@ -1,0 +1,36 @@
+# Unreal and generated project state
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+Autosaves/
+CrashReports/
+Logs/
+ShaderCache/
+MCP-Caches/
+*.uasset
+*.umap
+
+# Web dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.local
+credentials/
+tokens/
+secrets/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local review output
+*.local.md
