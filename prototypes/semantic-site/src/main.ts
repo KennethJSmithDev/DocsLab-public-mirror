@@ -60,7 +60,7 @@ function layout(content: string, currentPath: string): string {
 }
 
 function projectCard(project: Project): string {
-  const href = project.slug === "assembly" ? "/assembly" : `/portfolio/${project.slug}`;
+  const href = project.slug === "assembly" ? "/assembly" : project.slug === "docslab" ? "/docslab" : `/portfolio/${project.slug}`;
   return `
     <a class="project-card" href="${href}">
       <span class="card-kicker">${project.status}</span>
@@ -214,7 +214,6 @@ function normalizePath(pathname: string): string {
     window.history.replaceState(null, "", "/assembly");
     return "/assembly";
   }
-  if (normalized === "/docslab") return "/";
   return normalized;
 }
 
@@ -234,6 +233,10 @@ function render(): void {
   } else if (path === "/contact") {
     content = contact();
     title = "Contact — Kenneth J. Smith";
+  } else if (path === "/docslab") {
+    const project = findProject("docslab");
+    content = project ? projectDetail(project) : notFound();
+    title = "Doc's Lab — Kenneth J. Smith";
   } else if (path === "/assembly") {
     const project = findProject("assembly");
     content = project ? projectDetail(project) : notFound();
