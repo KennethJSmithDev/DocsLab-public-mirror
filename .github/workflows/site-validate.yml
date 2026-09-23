@@ -40,7 +40,7 @@ jobs:
 
       - name: Reject internal-only public markers
         run: |
-          if grep -R -n -E 'REVIEW_REQUIRED|PROTOTYPE_LIMITATION|Diagnostic Fox|LOGS\.ROOT|DIAGNOSTICS\.IIGE|STABLE OBJECT IDS|future bridge hook' dist; then
+          if grep -R -n -i -E 'REVIEW_REQUIRED|PROTOTYPE_LIMITATION|DEFERRED|Diagnostic Fox|logs\.root|diagnostics\.iige|operator\.root|portfolio\.root|contact\.root|experiments\.root|STABLE OBJECT IDS?|semantic object IDs?|IIGE INTEGRATION SHELL|Prototype status|future bridge|UNKNOWN / NOT CONNECTED|REQUEST_INTERACTIVE_EXPERIENCE|data-object-id' dist; then
             echo "Internal-only marker found in generated public output."
             exit 1
           fi
