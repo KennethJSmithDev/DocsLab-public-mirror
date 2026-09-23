@@ -1,0 +1,177 @@
+name: Audit live Azure surface
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/live-azure-audit.yml"
+      - "prototypes/semantic-site/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe deployed routes, headers, and assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          base="https://kind-bush-04a42f20f.6.azurestaticapps.net"
+          work="$RUNNER_TEMP/docslab-live-audit"
+          mkdir -p "$work"
+
+          routes=(
+            "/"
+            "/assembly"
+            "/portfolio"
+            "/portfolio/atlas-cortex"
+            "/portfolio/iige"
+            "/portfolio/slime-survivor"
+            "/portfolio/household-budget"
+            "/docslab"
+            "/contact"
+          )
+
+          failed=0
+
+          echo "== Route status =="
+          for route in "${routes[@]}"; do
+            code="$(curl --silent --show-error --location --connect-timeout 10 --max-time 30               --output "$work/route.html" --write-out "%{http_code}" "$base$route")" || {
+              echo "::error::Request failed for $route"
+              failed=1
+              continue
+            }
+            printf "%-40s %s\n" "$route" "$code"
+            if [[ "$code" != "200" ]]; then
+              echo "::error::Expected HTTP 200 for $route, received $code"
+              failed=1
+            fi
+          done
+
+          missing_code="$(curl --silent --show-error --location --connect-timeout 10 --max-time 30             --output "$work/missing.html" --write-out "%{http_code}" "$base/__docslab_audit_missing_route__")"
+          echo "SPA fallback probe: $missing_code"
+
+          curl --silent --show-error --location --connect-timeout 10 --max-time 30             --dump-header "$work/root.headers" --output "$work/root.html" "$base/"
+
+          echo
+          echo "== Root document =="
+          python3 - "$work/root.html" <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import sys
+
+          class Probe(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.in_title = False
+                  self.title = []
+                  self.assets = []
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == "title":
+                      self.in_title = True
+                  if tag == "script" and attrs.get("src"):
+                      self.assets.append(attrs["src"])
+                  if tag == "link" and attrs.get("href"):
+                      rel = attrs.get("rel", "")
+                      if isinstance(rel, str) and any(x in rel.lower() for x in ("stylesheet", "modulepreload", "preload")):
+                          self.assets.append(attrs["href"])
+              def handle_endtag(self, tag):
+                  if tag == "title":
+                      self.in_title = False
+              def handle_data(self, data):
+                  if self.in_title:
+                      self.title.append(data)
+
+          p = Probe()
+          p.feed(Path(sys.argv[1]).read_text(errors="replace"))
+          print("Title:", "".join(p.title).strip() or "<none>")
+          print("Assets:")
+          for asset in dict.fromkeys(p.assets):
+              print(asset)
+          Path(sys.argv[1] + ".assets").write_text("\n".join(dict.fromkeys(p.assets)))
+          PY
+
+          echo
+          echo "== Iframe policy headers =="
+          xfo="$(grep -i '^x-frame-options:' "$work/root.headers" | tr -d '\r' || true)"
+          csp="$(grep -i '^content-security-policy:' "$work/root.headers" | tr -d '\r' || true)"
+          echo "X-Frame-Options: ${xfo:-<absent>}"
+          echo "Content-Security-Policy: ${csp:-<absent>}"
+
+          if printf '%s' "$xfo" | grep -Eqi 'DENY|SAMEORIGIN'; then
+            echo "::error::X-Frame-Options blocks cross-origin framing."
+            failed=1
+          fi
+
+          if printf '%s' "$csp" | grep -Eqi "frame-ancestors[[:space:]]+'none'"; then
+            echo "::error::CSP frame-ancestors 'none' blocks framing."
+            failed=1
+          elif printf '%s' "$csp" | grep -Eqi "frame-ancestors[[:space:]]+'self'([[:space:]]|;|$)"             && ! printf '%s' "$csp" | grep -Eqi 'kennethjsmithdev\.github\.io|https://\*\.github\.io|frame-ancestors[^;]*\*'; then
+            echo "::error::CSP appears to restrict framing to self."
+            failed=1
+          fi
+
+          markers=(
+            "REVIEW_REQUIRED"
+            "PROTOTYPE_LIMITATION"
+            "Diagnostic Fox"
+            "logs.root"
+            "diagnostics.iige"
+            "operator.root"
+            "portfolio.root"
+            "contact.root"
+            "experiments.root"
+            "STABLE OBJECT IDS"
+            "semantic object IDs"
+            "IIGE INTEGRATION SHELL"
+            "Prototype status"
+            "future bridge"
+            "UNKNOWN / NOT CONNECTED"
+            "REQUEST_INTERACTIVE_EXPERIENCE"
+            "data-object-id"
+          )
+
+          echo
+          echo "== Deployed bundle publication scan =="
+          while IFS= read -r asset; do
+            [[ -z "$asset" ]] && continue
+            case "$asset" in
+              http://*|https://*) asset_url="$asset" ;;
+              /*) asset_url="$base$asset" ;;
+              *) asset_url="$base/$asset" ;;
+            esac
+
+            safe_name="$(printf '%s' "$asset" | tr '/:?&=' '_')"
+            asset_file="$work/$safe_name"
+            code="$(curl --silent --show-error --location --connect-timeout 10 --max-time 30               --output "$asset_file" --write-out "%{http_code}" "$asset_url")"
+            echo "$asset -> $code"
+
+            if [[ "$code" != "200" ]]; then
+              echo "::warning::Could not retrieve deployed asset $asset"
+              continue
+            fi
+
+            for marker in "${markers[@]}"; do
+              if grep -Fqi -- "$marker" "$asset_file"; then
+                echo "::error::Deployed asset contains internal-only marker: $marker"
+                failed=1
+              fi
+            done
+
+            if [[ "$asset" == *.js ]]; then
+              map_code="$(curl --silent --show-error --location --connect-timeout 10 --max-time 30                 --output /dev/null --write-out "%{http_code}" "$asset_url.map" || true)"
+              echo "source map probe for $asset: $map_code"
+              if [[ "$map_code" == "200" ]]; then
+                echo "::warning::A JavaScript source map is publicly reachable for $asset"
+              fi
+            fi
+          done < "$work/root.html.assets"
+
+          if [[ "$failed" -ne 0 ]]; then
+            exit 1
+          fi

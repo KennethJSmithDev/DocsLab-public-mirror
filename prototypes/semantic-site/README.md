@@ -1,7 +1,15 @@
-# Doc's Lab semantic site prototype
+# Doc's Lab public site
 
-This is an isolated, documentation-authorized prototype. It is not the production site and does not connect to Unreal, Three.js, IIGE, Atlas, a CMS, analytics, or a contact backend.
+This directory contains the Vite + TypeScript source for the sanitized public site.
 
-Run `npm install`, then `npm run dev`. `npm run typecheck` and `npm run build` are the available checks.
+## Local checks
 
-The prototype keeps semantic object resolution in `src/router.ts`; future interactive surfaces should call the same `openObject`/intent boundary rather than creating parallel destinations.
+```bash
+npm ci
+npm run typecheck
+npm run build
+```
+
+The rendered interface is limited to public professional content: home, selected work, case-study summaries, about, and contact. Internal development logs, diagnostic shells, unpublished experiments, credentials, and machine-local state are not rendered.
+
+Azure Static Web Apps is the hosting target. Deployment credentials remain outside the repository.
